@@ -1,0 +1,27 @@
+import { Router } from 'express';
+import { pagesController } from './pages.controller';
+import { authenticate } from '../../middlewares/authenticate';
+import { authorize } from '../../middlewares/authorize';
+
+const router = Router();
+
+// ── Tất cả đều cần đăng nhập ─────────────────────────────────
+router.get('/',          authenticate, pagesController.getPages);
+router.get('/following', authenticate, pagesController.getFollowingPages);
+router.get('/:slug',     authenticate, pagesController.getPageBySlug);
+
+// ── Chỉ System Admin tạo page ────────────────────────────────
+router.post('/', authenticate, authorize('SYSTEM_ADMIN'), pagesController.createPage);
+
+// ── Page Admin cập nhật trang của mình ───────────────────────
+router.patch('/:id', authenticate, authorize('PAGE_ADMIN', 'SYSTEM_ADMIN'), pagesController.updatePage);
+
+// ── Sinh viên follow / unfollow ───────────────────────────────
+router.post('/:id/follow',   authenticate, pagesController.followPage);
+router.delete('/:id/follow', authenticate, pagesController.unfollowPage);
+
+// ── System Admin quản lý thành viên ──────────────────────────
+router.post('/:id/members',           authenticate, authorize('SYSTEM_ADMIN'), pagesController.addMember);
+router.delete('/:id/members/:userId', authenticate, authorize('SYSTEM_ADMIN'), pagesController.removeMember);
+
+export default router;
