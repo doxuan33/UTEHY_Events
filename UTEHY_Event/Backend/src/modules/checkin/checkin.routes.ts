@@ -5,51 +5,25 @@ import { authorize } from '../../middlewares/authorize';
 
 const router = Router();
 
-// ── Sinh viên quét QR ─────────────────────────────────────────
-router.post('/scan', authenticate, checkinController.scanQr);
+// ── SINH VIÊN ĐIỂM DANH ──────────────────────────────────────
+router.post('/scan',        authenticate, checkinController.scanQr);      // QR checkin
+router.post('/scan-gps',    authenticate, checkinController.scanGps);      // GPS checkin (Haversine)
 
-// ── Page Admin quản lý điểm danh ─────────────────────────────
-router.post(
-  '/events/:eventId/start',
-  authenticate,
-  authorize('PAGE_ADMIN', 'SYSTEM_ADMIN'),
-  checkinController.startCheckin
-);
+// ── PAGE ADMIN ĐIỂM DANH THỦ CÔNG ────────────────────────────
+router.post('/manual',   authenticate, authorize('PAGE_ADMIN', 'SYSTEM_ADMIN'), checkinController.manualCheckin);
 
-router.post(
-  '/events/:eventId/end',
-  authenticate,
-  authorize('PAGE_ADMIN', 'SYSTEM_ADMIN'),
-  checkinController.endCheckin
-);
+// ── QUẢN LÝ BUỔI ĐIỂM DANH ───────────────────────────────────
+router.post('/events/:eventId/start', authenticate, authorize('PAGE_ADMIN', 'SYSTEM_ADMIN'), checkinController.startCheckin);
+router.post('/events/:eventId/end',   authenticate, authorize('PAGE_ADMIN', 'SYSTEM_ADMIN'), checkinController.endCheckin);
+router.get('/events/:eventId/token',  authenticate, authorize('PAGE_ADMIN', 'SYSTEM_ADMIN'), checkinController.getCurrentToken);
 
-router.post(
-  '/manual',
-  authenticate,
-  authorize('PAGE_ADMIN', 'SYSTEM_ADMIN'),
-  checkinController.manualCheckin
-);
+// ── LẤY QR TOKEN CHO SỰ KIỆN (HIỂN THỊ MÀN HÌNH) ─────────────
+router.get('/events/:eventId/qr-token', authenticate, checkinController.getEventQrToken);
 
-router.get(
-  '/events/:eventId/token',
-  authenticate,
-  authorize('PAGE_ADMIN', 'SYSTEM_ADMIN'),
-  checkinController.getCurrentToken
-);
+// ── SSE STREAM QR (TRÌNH CHIẾU MÀN HÌNH LỚN) ──────────────────
+router.get('/events/:eventId/stream', authenticate, authorize('PAGE_ADMIN', 'SYSTEM_ADMIN'), checkinController.streamQr);
 
-// SSE stream - không dùng sendSuccess vì trả về stream
-router.get(
-  '/events/:eventId/stream',
-  authenticate,
-  authorize('PAGE_ADMIN', 'SYSTEM_ADMIN'),
-  checkinController.streamQr
-);
-
-router.get(
-  '/events/:eventId/history',
-  authenticate,
-  authorize('PAGE_ADMIN', 'SYSTEM_ADMIN'),
-  checkinController.getCheckinHistory
-);
+// ── XEM LỊCH SỬ ĐIỂM DANH ───────────────────────────────────
+router.get('/events/:eventId/history', authenticate, authorize('PAGE_ADMIN', 'SYSTEM_ADMIN'), checkinController.getCheckinHistory);
 
 export default router;

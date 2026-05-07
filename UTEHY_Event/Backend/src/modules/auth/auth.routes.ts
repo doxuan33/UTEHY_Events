@@ -6,9 +6,10 @@ import rateLimit from 'express-rate-limit';
 const router = Router();
 
 // Rate limiter riêng cho auth - chặt hơn route thường
+// Tìm đoạn này trong auth.router.ts
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 phút
-  max: 10,                   // Tối đa 10 lần thử / 15 phút
+  max: 100,                  // Tăng lên 100 hoặc cao hơn để hỗ trợ Import
   message: { success: false, message: 'Quá nhiều lần thử, vui lòng thử lại sau 15 phút' },
 });
 

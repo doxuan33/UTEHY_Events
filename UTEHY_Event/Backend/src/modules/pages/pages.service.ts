@@ -22,7 +22,7 @@ export const pagesService = {
           description: input.description,
           avatar_url: input.avatar_url,
           cover_url: input.cover_url,
-          is_verified: true, // Tạo bởi System Admin → tự động verified
+          is_verified: input.is_verified ?? true, // Tạo bởi System Admin → tự động verified
         },
       });
 
@@ -70,16 +70,12 @@ export const pagesService = {
               select: {
                 id: true,
                 email: true,
-                profile: {
-                  select: { full_name: true, avatar_url: true, student_id: true },
-                },
+                profile: { select: { full_name: true, avatar_url: true, student_id: true } as any },
               },
             },
           },
         },
-        _count: {
-          select: { followers: true, events: true, posts: true },
-        },
+        _count: { select: { followers: true, events: true, posts: true } },
       },
     });
 
@@ -135,9 +131,16 @@ export const pagesService = {
       }
     }
 
+    // Chỉ SYSTEM_ADMIN mới được update trường is_verified
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const updateData: any = { ...input };
+    if (user?.role !== 'SYSTEM_ADMIN' && input.is_verified !== undefined) {
+      delete updateData.is_verified;
+    }
+
     return prisma.page.update({
       where: { id: pageId },
-      data: input,
+      data: updateData,
     });
   },
 
@@ -214,9 +217,7 @@ export const pagesService = {
       include: {
         user: {
           select: {
-            id: true,
-            email: true,
-            role: true,
+            id: true, email: true, role: true,
             profile: { select: { full_name: true, student_id: true } },
           },
         },

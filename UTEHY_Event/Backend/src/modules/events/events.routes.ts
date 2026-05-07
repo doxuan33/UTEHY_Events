@@ -10,6 +10,8 @@ router.get('/',           authenticate, eventsController.getEvents);
 router.get('/categories', authenticate, eventsController.getCategories);
 router.get('/pending',    authenticate, authorize('SYSTEM_ADMIN'), eventsController.getPendingEvents);
 router.get('/:id',        authenticate, eventsController.getEventById);
+// AI Recommendation
+router.get('/recommended', authenticate, eventsController.getRecommendedEvents);
 
 // ── Page Admin ────────────────────────────────────────────────
 router.post('/',      authenticate, authorize('PAGE_ADMIN', 'SYSTEM_ADMIN'), eventsController.createEvent);

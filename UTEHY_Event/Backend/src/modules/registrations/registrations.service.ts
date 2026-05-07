@@ -73,13 +73,27 @@ export const registrationsService = {
       };
     }
 
-    // 6. Tạo đăng ký + tăng slot trong 1 transaction
+    // 6. Tạo đăng ký + tăng slot trong 1 transaction với kiểm tra slot an toàn
     const registration = await prisma.$transaction(async (tx) => {
+      // Lấy thông tin slot hiện tại để kiểm tra (atomic)
+      const eventData = await tx.event.findUnique({
+        where: { id: eventId },
+        select: { max_slots: true, current_slots: true, requires_approval: true },
+      });
+
+      if (!eventData) {
+        throw { statusCode: 404, message: 'Không tìm thấy sự kiện' };
+      }
+
+      if (eventData.max_slots !== null && eventData.current_slots >= eventData.max_slots) {
+        throw { statusCode: 400, message: 'Sự kiện đã hết chỗ đăng ký' };
+      }
+
       const newReg = await tx.registration.create({
         data: {
           user_id: userId,
           event_id: eventId,
-          status: event.requires_approval ? 'REGISTERED' : 'REGISTERED',
+          status: eventData.requires_approval ? 'REGISTERED' : 'REGISTERED',
         },
         include: {
           event: {
@@ -96,10 +110,25 @@ export const registrationsService = {
         },
       });
 
-      await tx.event.update({
-        where: { id: eventId },
-        data: { current_slots: { increment: 1 } },
-      });
+      // Tăng slot bằng cách update với điều kiện: chỉ tăng nếu current_slots < max_slots
+      // Điều này đảm bảo atomic và tránh race condition
+      try {
+        await tx.event.update({
+          where: {
+            id: eventId,
+            ...(eventData.max_slots !== null
+              ? { current_slots: { lt: eventData.max_slots } }
+              : {}),
+          },
+          data: { current_slots: { increment: 1 } },
+        });
+      } catch (err: any) {
+        // P2025: Nếu where không khớp (đã hết slot), rollback
+        if (err.code === 'P2025' || err.meta?.cause?.code === 'P2025') {
+          throw { statusCode: 400, message: 'Sự kiện đã hết chỗ đăng ký (race condition)' };
+        }
+        throw err;
+      }
 
       return newReg;
     });

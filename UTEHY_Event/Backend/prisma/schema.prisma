@@ -145,6 +145,7 @@ model PageMember {
   user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@unique([page_id, user_id])
+  @@index([user_id]) 
   @@map("page_members")
 }
 
@@ -166,10 +167,10 @@ model PageFollower {
 // ============================================================
 
 model EventCategory {
-  id                     Int     @id @default(autoincrement())
-  name                   String  @unique @db.VarChar(100)
-  default_training_points Int    @default(0)
-  color_hex              String? @db.VarChar(7)
+  id                      Int     @id @default(autoincrement())
+  name                    String  @unique @db.VarChar(100)
+  default_training_points Int     @default(0)
+  color_hex               String? @db.VarChar(7)
 
   events Event[]
 
@@ -181,7 +182,7 @@ model Event {
   page_id               String      @db.VarChar(36)
   category_id           Int?
   title                 String      @db.VarChar(255)
-  description           String?     @db.Text
+  description           String?     @db.LongText
   banner_url            String?     @db.Text
   location              String?     @db.VarChar(500)
   latitude              Decimal?    @db.Decimal(10, 8)
@@ -199,11 +200,11 @@ model Event {
   created_at            DateTime    @default(now())
   updated_at            DateTime    @updatedAt
 
-  page          Page           @relation(fields: [page_id], references: [id], onDelete: Cascade)
-  category      EventCategory? @relation(fields: [category_id], references: [id], onDelete: SetNull)
+  page         Page           @relation(fields: [page_id], references: [id], onDelete: Cascade)
+  category     EventCategory? @relation(fields: [category_id], references: [id], onDelete: SetNull)
   registrations Registration[]
-  qr_tokens     QrToken[]
-  posts         Post[]
+  qr_tokens    QrToken[]
+  posts        Post[]
 
   @@index([status, start_time])
   @@index([page_id, status])
@@ -223,8 +224,8 @@ model Registration {
   registered_at DateTime           @default(now())
   updated_at    DateTime           @updatedAt
 
-  user    User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  event   Event    @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  event   Event   @relation(fields: [event_id], references: [id], onDelete: Cascade)
   checkin Checkin?
 
   @@unique([user_id, event_id])
@@ -240,7 +241,7 @@ model Registration {
 model QrToken {
   id         String   @id @default(uuid()) @db.VarChar(36)
   event_id   String   @db.VarChar(36)
-  token      String   @unique @db.VarChar(64)
+  token      String   @unique @db.VarChar(255) 
   expires_at DateTime
   created_at DateTime @default(now())
 
@@ -280,8 +281,8 @@ model Post {
   page_id        String   @db.VarChar(36)
   author_id      String   @db.VarChar(36)
   event_id       String?  @db.VarChar(36)
-  content        String   @db.Text
-  image_urls     String?  @db.Text
+  content        String   @db.LongText 
+  image_urls     Json?    
   likes_count    Int      @default(0)
   comments_count Int      @default(0)
   created_at     DateTime @default(now())
@@ -339,7 +340,7 @@ model Notification {
   type       NotificationType
   title      String           @db.VarChar(255)
   body       String           @db.Text
-  data       String?          @db.Text
+  data       Json?            
   is_read    Boolean          @default(false)
   created_at DateTime         @default(now())
 

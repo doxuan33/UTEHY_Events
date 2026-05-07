@@ -1,6 +1,8 @@
 import crypto from 'crypto';
 import prisma from '../../config/database';
-import { QR_TOKEN_TTL_SECONDS } from '../../shared/constants';
+
+// TTL cho mã QR (mặc định 15 giây theo yêu cầu của bạn)
+const QR_TOKEN_TTL_SECONDS = 15;
 
 export const qrService = {
 

@@ -1,4 +1,4 @@
-import { Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { eventsService } from './events.service';
 import {
   createEventSchema,
@@ -8,6 +8,7 @@ import {
 } from './events.schema';
 import { sendSuccess, sendError } from '../../shared/utils/response';
 import { AuthRequest } from '../../middlewares/authenticate';
+
 // Helper lấy string từ param
 const getParam = (param: string | string[]): string =>
   Array.isArray(param) ? param[0] : param;
@@ -50,6 +51,18 @@ export const eventsController = {
     } catch (err) { next(err); }
     },
 
+  // GET /api/v1/events/recommended (AI Recommendations)
+  async getRecommendedEvents(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      if (!req.user?.id) {
+        return sendError(res, 'Yêu cầu xác thực', 401);
+      }
+      const limit = parseInt(req.query.limit as string) || 5;
+      const result = await eventsService.getRecommendedEvents(req.user.id, limit);
+      return sendSuccess(res, result, 'Lấy danh sách gợi ý thành công');
+    } catch (err) { next(err); }
+  },
+
   // POST /api/v1/events
   async createEvent(req: AuthRequest, res: Response, next: NextFunction) {
     try {
@@ -58,7 +71,7 @@ export const eventsController = {
         return sendError(res, parsed.error.issues[0].message, 400);
       }
       // page_id lấy từ body (PAGE_ADMIN gửi lên page của mình)
-      const { page_id, ...eventData } = req.body;
+      const { page_id } = req.body;
       if (!page_id) {
         return sendError(res, 'Vui lòng cung cấp page_id', 400);
       }

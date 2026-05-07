@@ -1,10 +1,10 @@
 import { z } from 'zod';
 
 export const createPageSchema = z.object({
-  name: z.string().min(3, 'Tên CLB phải có ít nhất 3 ký tự').max(255),
+  name: z.string().min(3, 'Tên CLB phải có ít least 3 ký tự').max(255),
   slug: z
     .string()
-    .min(3, 'Slug phải có ít nhất 3 ký tự')
+    .min(3, 'Slug phải có ít least 3 ký tự')
     .max(100)
     .regex(
       /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
@@ -13,6 +13,7 @@ export const createPageSchema = z.object({
   description: z.string().max(2000).optional(),
   avatar_url: z.string().url('URL avatar không hợp lệ').optional(),
   cover_url: z.string().url('URL ảnh bìa không hợp lệ').optional(),
+  is_verified: z.boolean().default(true).optional(),
 });
 
 export const updatePageSchema = createPageSchema.partial();

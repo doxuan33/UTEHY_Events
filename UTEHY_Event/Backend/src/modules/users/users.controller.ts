@@ -1,12 +1,14 @@
-import { Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { usersService } from './users.service';
 import {
   updateProfileSchema,
   changePasswordSchema,
   getUsersQuerySchema,
+  importStudentsSchema,
 } from './users.schema';
 import { sendSuccess, sendError } from '../../shared/utils/response';
 import { AuthRequest } from '../../middlewares/authenticate';
+import { ImportStudentsInput } from './users.schema';
 
 const getParam = (param: string | string[]): string =>
   Array.isArray(param) ? param[0] : param;
@@ -18,6 +20,18 @@ export const usersController = {
     try {
       const result = await usersService.getUserProfile(req.user!.id);
       return sendSuccess(res, result, 'Lấy thông tin thành công');
+    } catch (err) { next(err); }
+  },
+
+  // POST /api/v1/users/import-students (SYSTEM_ADMIN)
+  async importStudents(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const parsed = importStudentsSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return sendError(res, parsed.error.issues[0].message, 400);
+      }
+      const result = await usersService.bulkCreateStudents(parsed.data.students);
+      return sendSuccess(res, result, `Import hoàn tất. Thành công: ${result.success}, Lỗi: ${result.failed}`);
     } catch (err) { next(err); }
   },
 

@@ -12,13 +12,15 @@ const envSchema = z.object({
   JWT_REFRESH_EXPIRES: z.string().default('7d'),
   REDIS_HOST: z.string().default('localhost'),
   REDIS_PORT: z.string().default('6379'),
+  GOOGLE_FORM_WEBHOOK_SECRET: z.string().default(''),
+  FRONTEND_URL: z.string().default('*'),
 });
 
 const parsed = envSchema.safeParse(process.env);
 
 if (!parsed.success) {
   console.error('❌ Thiếu biến môi trường:', parsed.error.format());
-  process.exit(1); // Dừng server ngay nếu thiếu config
+  process.exit(1);
 }
 
 export const env = parsed.data;

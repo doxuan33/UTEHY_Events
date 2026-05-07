@@ -1,14 +1,15 @@
 import { z } from 'zod';
 
 export const updateProfileSchema = z.object({
-  full_name: z.string().min(2, 'Họ tên phải có ít nhất 2 ký tự').max(150).optional(),
-  class_name: z.string().max(50).optional(),
-  faculty: z.string().max(150).optional(),
+  full_name: z.string().min(2, 'Họ tên phải có ít nhất 2 ký tự').max(150).nullish().or(z.literal('')),
+  class_name: z.string().max(50).nullish().or(z.literal('')),
+  faculty: z.string().max(150).nullish().or(z.literal('')),
   phone: z
     .string()
-    .regex(/^(0|\+84)[0-9]{9}$/, 'Số điện thoại không hợp lệ')
-    .optional(),
-  avatar_url: z.string().url('URL avatar không hợp lệ').optional(),
+    .nullish()
+    .or(z.literal(''))
+    .refine((val) => !val || /^(0|\+84)[0-9]{9}$/.test(val), 'Số điện thoại không hợp lệ'),
+  avatar_url: z.string().url('URL avatar không hợp lệ').nullish().or(z.literal('')),
 });
 
 export const changePasswordSchema = z.object({
@@ -30,6 +31,18 @@ export const getUsersQuerySchema = z.object({
   role: z.enum(['STUDENT', 'PAGE_ADMIN', 'SYSTEM_ADMIN']).optional(),
 });
 
+export const importStudentsSchema = z.object({
+  students: z.array(z.object({
+    student_id: z.string().min(1, 'MSSV không được để trống'),
+    full_name: z.string().min(1, 'Họ tên không được để trống'),
+    class_name: z.string().optional(),
+    faculty: z.string().optional(),
+    email: z.string().email('Email không hợp lệ').optional(),
+    phone: z.string().optional(),
+  })).min(1, 'Danh sách sinh viên không được để trống'),
+});
+
 export type UpdateProfileInput  = z.infer<typeof updateProfileSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 export type GetUsersQuery       = z.infer<typeof getUsersQuerySchema>;
+export type ImportStudentsInput = z.infer<typeof importStudentsSchema>;

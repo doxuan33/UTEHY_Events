@@ -53,6 +53,23 @@ export const usersService = {
       },
     });
 
+    // Lấy toàn bộ danh sách sự kiện đã tham gia
+    const allParticipatedEvents = await prisma.registration.findMany({
+      where: { user_id: targetUserId, status: 'ATTENDED' },
+      orderBy: { updated_at: 'desc' },
+      include: {
+        event: {
+          select: {
+            id: true, title: true, start_time: true, end_time: true,
+            training_points: true, banner_url: true, location: true,
+            status: true,
+            category: { select: { name: true, color_hex: true } },
+            page: { select: { name: true, slug: true, avatar_url: true } },
+          },
+        },
+      },
+    });
+
     return {
       id: user.id,
       email: user.email,
@@ -74,6 +91,11 @@ export const usersService = {
         awarded_at: ub.awarded_at,
       })),
       recent_events: recentEvents.map(r => r.event),
+      participated_events: allParticipatedEvents.map(r => ({
+        registration_id: r.id,
+        registered_at: r.registered_at,
+        event: r.event,
+      })),
     };
   },
 
@@ -237,18 +259,11 @@ export const usersService = {
         take: limit,
         orderBy: { created_at: 'desc' },
         select: {
-          id: true,
-          email: true,
-          role: true,
-          is_active: true,
-          created_at: true,
+          id: true, email: true, role: true, is_active: true, created_at: true,
           profile: {
             select: {
-              full_name: true,
-              student_id: true,
-              class_name: true,
-              avatar_url: true,
-              training_points: true,
+              full_name: true, student_id: true, class_name: true,
+              avatar_url: true, training_points: true,
             },
           },
         },
@@ -291,5 +306,123 @@ export const usersService = {
       ...updated,
       message: updated.is_active ? 'Đã mở khóa tài khoản' : 'Đã khóa tài khoản',
     };
+  },
+
+  // ── IMPORT SINH VIÊN TỪ EXCEL ──────────────────────────────
+  async bulkCreateStudents(students: any[]) {
+    // Hàm làm sạch chuỗi
+    const cleanString = (str: any): string => {
+      if (typeof str !== 'string') return '';
+      return str.trim().replace(/\s+/g, ' ').replace(/[\u200B-\u200D\uFEFF]/g, '');
+    };
+
+    // Hàm viết hoa các từ
+    const capitalizeWords = (str: string): string => {
+      return str.replace(/\b\w/g, (l) => l.toUpperCase());
+    };
+
+    // Hàm làm sạch số điện thoại
+    const cleanPhone = (phone: any): string | null => {
+      if (!phone) return null;
+      const cleaned = String(phone).replace(/[^0-9+]/g, '').trim();
+      if (cleaned.startsWith('84')) return '0' + cleaned.slice(2);
+      if (cleaned.startsWith('+84')) return '0' + cleaned.slice(3);
+      return cleaned;
+    };
+
+    const results = { success: 0, failed: 0, errors: [] as { row: number; student_id: string; message: string }[] };
+    const batchSize = 50;
+
+    for (let i = 0; i < students.length; i += batchSize) {
+      const batch = students.slice(i, i + batchSize);
+      
+      await prisma.$transaction(async (tx) => {
+        for (let j = 0; j < batch.length; j++) {
+          const rowIndex = i + j + 2; // +2 vì Excel có header và bắt đầu từ dòng 2
+          const data = batch[j];
+          
+          try {
+            const studentIdRaw = data.student_id || data.MSSV || data['Mã số sinh viên'];
+            if (!studentIdRaw) {
+              throw new Error('Thiếu MSSV');
+            }
+
+            const studentId = cleanString(studentIdRaw);
+            if (!/^\d{8,10}$/.test(studentId)) {
+              throw new Error(`MSSV không hợp lệ: ${studentId}`);
+            }
+
+            const fullNameRaw = data.full_name || data['Họ và tên'] || data['Họ tên'];
+            if (!fullNameRaw) {
+              throw new Error('Thiếu họ tên');
+            }
+            const full_name = capitalizeWords(cleanString(fullNameRaw));
+
+            const class_name = data.class_name || data['Lớp'] || data['Lớp học'];
+            const class_clean = class_name ? cleanString(class_name).toUpperCase() : null;
+
+            const faculty = data.faculty || data['Khoa'] || data['Tên khoa'];
+            const faculty_clean = faculty ? capitalizeWords(cleanString(faculty)) : null;
+
+            const phoneRaw = data.phone || data['Số điện thoại'] || data['SDT'];
+            const phone = phoneRaw ? cleanPhone(phoneRaw) : null;
+            if (phone && !/^(0|\+84)[0-9]{9}$/.test(phone)) {
+              throw new Error(`Số điện thoại không hợp lệ: ${phone}`);
+            }
+
+            const emailRaw = data.email || data['Email'];
+            const email = emailRaw ? cleanString(emailRaw).toLowerCase() : `${studentId}@student.utehy.edu.vn`;
+            
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+              throw new Error(`Email không hợp lệ: ${email}`);
+            }
+
+            const existingUser = await tx.user.findFirst({
+              where: { OR: [{ email }, { profile: { student_id: studentId } }] },
+              include: { profile: true }
+            });
+
+            if (existingUser) {
+              const isDuplicate = existingUser.profile?.student_id === studentId;
+              if (isDuplicate) {
+                throw new Error('Đã tồn tại trong hệ thống');
+              }
+            }
+
+            const hashedPassword = await bcrypt.hash(studentId, 12);
+
+            await tx.user.create({
+              data: {
+                email,
+                password: hashedPassword,
+                role: 'STUDENT',
+                profile: {
+                  create: {
+                    full_name,
+                    student_id: studentId,
+                    class_name: class_clean,
+                    faculty: faculty_clean,
+                    phone,
+                    training_points: 0,
+                  },
+                },
+              },
+            });
+
+            results.success++;
+          } catch (err: any) {
+            results.failed++;
+            const studentId = (data.student_id || data.MSSV || 'N/A').toString();
+            results.errors.push({
+              row: rowIndex,
+              student_id: studentId,
+              message: err.message || 'Lỗi không xác định'
+            });
+          }
+        }
+      });
+    }
+
+    return results;
   },
 };

@@ -18,7 +18,7 @@ export const eventsService = {
         category_id: input.category_id,
         title: input.title,
         description: input.description,
-        banner_url: input.banner_url,
+        banner_url: (input as any).banner_url,
         location: input.location,
         latitude: input.latitude,
         longitude: input.longitude,
@@ -129,15 +129,25 @@ export const eventsService = {
       throw { statusCode: 400, message: 'Không thể chỉnh sửa sự kiện đã được duyệt' };
     }
 
+    // Validate time constraints at service level
+    const startTime = input.start_time ? new Date(input.start_time) : event.start_time;
+    const endTime = input.end_time ? new Date(input.end_time) : event.end_time;
+    const registrationDeadline = input.registration_deadline ? new Date(input.registration_deadline) : event.registration_deadline;
+
+    if (endTime <= startTime) {
+      throw { statusCode: 400, message: 'Thời gian kết thúc phải sau thời gian bắt đầu' };
+    }
+    if (registrationDeadline > startTime) {
+      throw { statusCode: 400, message: 'Hạn đăng ký phải trước hoặc bằng thời gian bắt đầu' };
+    }
+
     const updated = await prisma.event.update({
       where: { id: eventId },
       data: {
         ...input,
-        ...(input.start_time && { start_time: new Date(input.start_time) }),
-        ...(input.end_time && { end_time: new Date(input.end_time) }),
-        ...(input.registration_deadline && {
-          registration_deadline: new Date(input.registration_deadline),
-        }),
+        ...(input.start_time && { start_time: startTime }),
+        ...(input.end_time && { end_time: endTime }),
+        ...(input.registration_deadline && { registration_deadline: registrationDeadline }),
         status: 'PENDING', // Reset về pending để admin duyệt lại
       },
       include: {
@@ -221,5 +231,72 @@ export const eventsService = {
         _count: { select: { registrations: true } },
       },
     });
+  },
+
+  // ── GỢI Ý SỰ KIỆN (AI RECOMMENDATION) ─────────────────────
+  // Scoring: faculty match +3, category match +5, nearly full +2
+  async getRecommendedEvents(userId: string, limit: number = 5) {
+    // 1. Lấy profile của user (faculty)
+    const profile = await prisma.profile.findUnique({
+      where: { user_id: userId },
+    });
+
+    const userFaculty = profile?.faculty?.toLowerCase() || '';
+
+    // 2. Lấy các sự kiện APPROVED sắp diễn ra (trong 30 ngày tới)
+    const now = new Date();
+    const thirtyDaysLater = new Date();
+    thirtyDaysLater.setDate(thirtyDaysLater.getDate() + 30);
+
+    const events = await prisma.event.findMany({
+      where: {
+        status: 'APPROVED',
+        start_time: { gte: now, lte: thirtyDaysLater },
+      },
+      include: {
+        page: { select: { id: true, name: true, avatar_url: true } },
+        category: true,
+        _count: { select: { registrations: true } },
+      },
+      orderBy: { start_time: 'asc' },
+      take: 50, // Lấy nhiều để chọn top sau khi tính điểm
+    });
+
+    // 3. Tính điểm cho mỗi sự kiện
+    const scoredEvents = events.map(event => {
+      let score = 0;
+      const registrationCount = event._count.registrations;
+      const maxSlots = event.max_slots || Infinity;
+      const fillRatio = maxSlots > 0 ? registrationCount / maxSlots : 0;
+
+      // Faculty match: +3 if faculty name appears in title/description/location
+      if (userFaculty) {
+        const searchText = `${event.title} ${event.description || ''} ${event.location || ''}`.toLowerCase();
+        if (searchText.includes(userFaculty)) {
+          score += 3;
+        }
+      }
+
+      // Category popularity: +5 nếu category có nhiều sự kiện được đăng ký
+      // (DùngfillRatio làm proxy - càng đăng ký nhiều càng phổ biến)
+      if (fillRatio > 0.5) {
+        score += 5;
+      }
+
+      // Nearly full: +2 nếu còn ít slot (< 20%)
+      if (maxSlots !== null && fillRatio >= 0.8) {
+        score += 2;
+      }
+
+      return { event, score };
+    });
+
+    // 4. Sắp xếp theo điểm và lấy top N
+    const topEvents = scoredEvents
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+      .map(item => item.event);
+
+    return topEvents;
   },
 };
