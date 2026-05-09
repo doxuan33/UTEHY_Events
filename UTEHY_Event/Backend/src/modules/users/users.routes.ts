@@ -7,6 +7,7 @@ const router = Router();
 
 // ── Bản thân (tất cả đều cần đăng nhập) ──────────────────────
 router.get('/me',                      authenticate, usersController.getMe);
+router.post('/avatar',                 authenticate, usersController.uploadAvatar);
 router.patch('/me',                    authenticate, usersController.updateProfile);
 router.post('/me/change-password',     authenticate, usersController.changePassword);
 router.get('/me/training-points',      authenticate, usersController.getTrainingPoints);

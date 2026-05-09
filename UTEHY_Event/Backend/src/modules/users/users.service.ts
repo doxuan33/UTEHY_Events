@@ -99,6 +99,26 @@ export const usersService = {
     };
   },
 
+  // ── CẬP NHẬT AVATAR (UPLOAD) ─────────────────────────────
+  async updateAvatar(userId: string, avatarUrl: string | null) {
+    const profile = await prisma.profile.findUnique({
+      where: { user_id: userId },
+    });
+
+    if (!profile) {
+      throw { statusCode: 404, message: 'Không tìm thấy hồ sơ người dùng' };
+    }
+
+    const updated = await prisma.profile.update({
+      where: { user_id: userId },
+      data: {
+        avatar_url: avatarUrl,
+      },
+    });
+
+    return updated;
+  },
+
   // ── CẬP NHẬT PROFILE CỦA BẢN THÂN ───────────────────────
   async updateProfile(userId: string, input: UpdateProfileInput) {
     const profile = await prisma.profile.findUnique({
@@ -412,10 +432,10 @@ export const usersService = {
             results.success++;
           } catch (err: any) {
             results.failed++;
-            const studentId = (data.student_id || data.MSSV || 'N/A').toString();
+            const student_id = (data.student_id || data.MSSV || 'N/A').toString();
             results.errors.push({
               row: rowIndex,
-              student_id: studentId,
+              student_id,
               message: err.message || 'Lỗi không xác định'
             });
           }
@@ -425,4 +445,5 @@ export const usersService = {
 
     return results;
   },
+
 };

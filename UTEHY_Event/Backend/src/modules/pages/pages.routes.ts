@@ -21,7 +21,20 @@ router.post('/:id/follow',   authenticate, pagesController.followPage);
 router.delete('/:id/follow', authenticate, pagesController.unfollowPage);
 
 // ── System Admin quản lý thành viên ──────────────────────────
-router.post('/:id/members',           authenticate, authorize('SYSTEM_ADMIN'), pagesController.addMember);
-router.delete('/:id/members/:userId', authenticate, authorize('SYSTEM_ADMIN'), pagesController.removeMember);
+router.post('/:id/members',              authenticate, authorize('SYSTEM_ADMIN'), pagesController.addMember);
+router.delete('/:id/members/:userId',    authenticate, authorize('SYSTEM_ADMIN'), pagesController.removeMember);
+
+// ── Sinh viên nộp đơn gia nhập CLB ───────────────────────────
+router.post('/:id/join',   authenticate, pagesController.joinPage);
+
+// ── System Admin / Page Admin quản lý đơn xin gia nhập ───────
+router.get(   '/:id/join-requests',           authenticate, authorize('PAGE_ADMIN', 'SYSTEM_ADMIN'), pagesController.getJoinRequests);
+router.patch('/:id/join-requests/:userId/approve', authenticate, authorize('PAGE_ADMIN', 'SYSTEM_ADMIN'), pagesController.approveJoinRequest);
+router.patch('/:id/join-requests/:userId/reject',  authenticate, authorize('PAGE_ADMIN', 'SYSTEM_ADMIN'), pagesController.rejectJoinRequest);
+
+// ── System Admin / Page Admin quản lý thành viên ─────────────
+router.get(   '/:id/members',                   authenticate, authorize('PAGE_ADMIN', 'SYSTEM_ADMIN'), pagesController.getMembers);
+router.patch('/:id/members/:userId/role',       authenticate, authorize('PAGE_ADMIN', 'SYSTEM_ADMIN'), pagesController.updateMemberRole);
+router.delete('/:id/members/:userId/kick',      authenticate, authorize('PAGE_ADMIN', 'SYSTEM_ADMIN'), pagesController.kickMember);
 
 export default router;

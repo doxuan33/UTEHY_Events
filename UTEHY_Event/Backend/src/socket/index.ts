@@ -1,6 +1,6 @@
 import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
-import { env } from '../config/env';
+import { env, getCorsOrigins } from '../config/env';
 
 /**
  * Khởi tạo Socket.io Server
@@ -10,7 +10,7 @@ import { env } from '../config/env';
 export function initializeSocket(httpServer: any): Server {
   const io = new Server(httpServer, {
     cors: {
-      origin: env.FRONTEND_URL || '*',
+      origin: getCorsOrigins(),
       credentials: true,
       methods: ['GET', 'POST'],
     },
@@ -36,7 +36,7 @@ export function initializeSocket(httpServer: any): Server {
 
   // Xử lý kết nối
   io.on('connection', (socket: any) => {
-    console.log(`[Socket.io] User connected: ${socket.user?.id} (socket: ${socket.id})`);
+    // User connected
 
     // ──────────────────────────────────────────────────────
     // Sự kiện: Tham gia phòng sự kiện (join_event)
@@ -49,18 +49,16 @@ export function initializeSocket(httpServer: any): Server {
 
       const room = `event_${eventId}`;
       socket.join(room);
-      
-      console.log(`[Socket.io] User ${socket.user?.id} joined room: ${room}`);
-      
-      socket.emit('joined_event', { 
-        event_id: eventId, 
+
+      socket.emit('joined_event', {
+        event_id: eventId,
         room,
         message: 'Đã tham gia phòng sự kiện'
       });
 
       const roomSockets = io.sockets.adapter.rooms.get(room);
       const participantCount = roomSockets ? roomSockets.size : 0;
-      
+
       io.to(room).emit('participant_count', {
         event_id: eventId,
         count: participantCount,
@@ -78,17 +76,15 @@ export function initializeSocket(httpServer: any): Server {
 
       const room = `event_${eventId}`;
       socket.leave(room);
-      
-      console.log(`[Socket.io] User ${socket.user?.id} left room: ${room}`);
-      
-      socket.emit('left_event', { 
+
+      socket.emit('left_event', {
         event_id: eventId,
         message: 'Đã rời phòng sự kiện'
       });
 
       const roomSockets = io.sockets.adapter.rooms.get(room);
       const participantCount = roomSockets ? roomSockets.size : 0;
-      
+
       io.to(room).emit('participant_count', {
         event_id: eventId,
         count: participantCount,
@@ -117,7 +113,7 @@ export function initializeSocket(httpServer: any): Server {
       }
 
       const room = `event_${event_id}`;
-      
+
       const questionPayload = {
         id: `q_${Date.now()}_${socket.user?.id}_${Math.random().toString(36).substr(2, 9)}`,
         event_id: event_id,
@@ -130,8 +126,6 @@ export function initializeSocket(httpServer: any): Server {
         vote_count: 0,
         has_voted: false,
       };
-
-      console.log(`[Socket.io] Question from user ${socket.user?.id} in ${room}`);
 
       socket.to(room).emit('new_question', questionPayload);
       socket.emit('new_question', questionPayload);
@@ -154,8 +148,6 @@ export function initializeSocket(httpServer: any): Server {
       }
 
       const room = `event_${event_id}`;
-      
-      console.log(`[Socket.io] User ${socket.user?.id} upvoted question ${question_id}`);
 
       const voteUpdatePayload = {
         event_id: event_id,
@@ -172,13 +164,11 @@ export function initializeSocket(httpServer: any): Server {
     // Sự kiện: Client ngắt kết nối
     // ──────────────────────────────────────────────────────
     socket.on('disconnect', (reason: any) => {
-      console.log(`[Socket.io] User ${socket.user?.id} disconnected. Reason: ${reason}`);
-      
       socket.rooms.forEach((room: string) => {
         if (room !== socket.id) {
           const participantCount = io.sockets.adapter.rooms.get(room)?.size || 0;
           const eventId = room.replace('event_', '');
-          
+
           io.to(room).emit('participant_count', {
             event_id: eventId,
             count: participantCount,

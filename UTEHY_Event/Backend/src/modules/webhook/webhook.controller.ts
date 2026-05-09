@@ -26,7 +26,7 @@ export const webhookController = {
       // Dữ liệu thường có dạng: { "Tên": "value", "Email": "value", ... }
       // Có thể tạo event, registration, hoặc gửi notification tùy logic
 
-      console.log('📩 Google Form webhook received:', JSON.stringify(req.body, null, 2));
+      // Webhook processed successfully (no logging in production)
 
       // Example: Extract fields (cần customize theo form cụ thể)
       const formData = req.body as Record<string, any>;

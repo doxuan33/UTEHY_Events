@@ -5,12 +5,18 @@ import { notificationsService } from '../notifications/notifications.service';
 export const eventsService = {
 
   // ── TẠO SỰ KIỆN (PAGE_ADMIN) ─────────────────────────────
-  async createEvent(pageId: string, input: CreateEventInput) {
+  async createEvent(pageId: string, input: CreateEventInput & { banner_url?: string }) {
     // Kiểm tra page có tồn tại không
     const page = await prisma.page.findUnique({ where: { id: pageId } });
     if (!page) {
       throw { statusCode: 404, message: 'Không tìm thấy trang CLB' };
     }
+
+    const startTime = new Date(input.start_time);
+    const endTime = input.end_time ? new Date(input.end_time) : new Date(startTime.getTime() + 3 * 60 * 60 * 1000);
+    const registrationDeadline = input.registration_deadline
+      ? new Date(input.registration_deadline)
+      : new Date(startTime.getTime() - 24 * 60 * 60 * 1000);
 
     const event = await prisma.event.create({
       data: {
@@ -18,14 +24,14 @@ export const eventsService = {
         category_id: input.category_id,
         title: input.title,
         description: input.description,
-        banner_url: (input as any).banner_url,
+        banner_url: input.banner_url,
         location: input.location,
         latitude: input.latitude,
         longitude: input.longitude,
         checkin_radius_m: input.checkin_radius_m,
-        start_time: new Date(input.start_time),
-        end_time: new Date(input.end_time),
-        registration_deadline: new Date(input.registration_deadline),
+        start_time: startTime,
+        end_time: endTime,
+        registration_deadline: registrationDeadline,
         max_slots: input.max_slots,
         training_points: input.training_points,
         requires_approval: input.requires_approval,
@@ -116,7 +122,7 @@ export const eventsService = {
   },
 
   // ── CẬP NHẬT SỰ KIỆN (PAGE_ADMIN) ────────────────────────
-  async updateEvent(eventId: string, pageId: string, input: UpdateEventInput) {
+  async updateEvent(eventId: string, pageId: string, input: UpdateEventInput & { banner_url?: string }) {
     const event = await prisma.event.findUnique({ where: { id: eventId } });
 
     if (!event) {
@@ -131,8 +137,8 @@ export const eventsService = {
 
     // Validate time constraints at service level
     const startTime = input.start_time ? new Date(input.start_time) : event.start_time;
-    const endTime = input.end_time ? new Date(input.end_time) : event.end_time;
-    const registrationDeadline = input.registration_deadline ? new Date(input.registration_deadline) : event.registration_deadline;
+    const endTime = input.end_time ? new Date(input.end_time) : (event.end_time || new Date(startTime.getTime() + 3 * 60 * 60 * 1000));
+    const registrationDeadline = input.registration_deadline ? new Date(input.registration_deadline) : (event.registration_deadline || new Date(startTime.getTime() - 24 * 60 * 60 * 1000));
 
     if (endTime <= startTime) {
       throw { statusCode: 400, message: 'Thời gian kết thúc phải sau thời gian bắt đầu' };
@@ -146,15 +152,16 @@ export const eventsService = {
       data: {
         ...input,
         ...(input.start_time && { start_time: startTime }),
-        ...(input.end_time && { end_time: endTime }),
-        ...(input.registration_deadline && { registration_deadline: registrationDeadline }),
+        ...(input.end_time ? { end_time: endTime } : (!event.end_time && { end_time: endTime })),
+        ...(input.registration_deadline ? { registration_deadline: registrationDeadline } : (!event.registration_deadline && { registration_deadline: registrationDeadline })),
+        ...(input.banner_url && { banner_url: input.banner_url }),
         status: 'PENDING', // Reset về pending để admin duyệt lại
       },
       include: {
         page: { select: { id: true, name: true } },
         category: true,
       },
-    });
+    }    );
 
     return updated;
   },

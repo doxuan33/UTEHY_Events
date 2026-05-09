@@ -1,6 +1,6 @@
 import { Response, NextFunction } from 'express';
 import { pagesService } from './pages.service';
-import { createPageSchema, updatePageSchema, addMemberSchema } from './pages.schema';
+import { createPageSchema, updatePageSchema, addMemberSchema, joinPageSchema, updateMemberRoleSchema } from './pages.schema';
 import { sendSuccess, sendError } from '../../shared/utils/response';
 import { AuthRequest } from '../../middlewares/authenticate';
 
@@ -110,6 +110,89 @@ export const pagesController = {
         getParam(req.params.userId)
       );
       return sendSuccess(res, null, 'Xóa thành viên thành công');
+    } catch (err) { next(err); }
+  },
+
+  // POST /api/v1/pages/:id/join (STUDENT nộp đơn gia nhập)
+  async joinPage(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const parsed = joinPageSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return sendError(res, parsed.error.issues[0].message, 400);
+      }
+      const result = await pagesService.joinPage(
+        getParam(req.params.id),
+        req.user!.id,
+        parsed.data
+      );
+      return sendSuccess(res, result, 'Đã gửi yêu cầu gia nhập', 201);
+    } catch (err) { next(err); }
+  },
+
+  // GET /api/v1/pages/:id/members (Lấy danh sách thành viên)
+  async getMembers(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const result = await pagesService.getMembers(getParam(req.params.id));
+      return sendSuccess(res, result, 'Lấy danh sách thành viên thành công');
+    } catch (err) { next(err); }
+  },
+
+  // GET /api/v1/pages/:id/join-requests (Lấy danh sách yêu cầu gia nhập chờ duyệt)
+  async getJoinRequests(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const result = await pagesService.getJoinRequests(getParam(req.params.id));
+      return sendSuccess(res, result, 'Lấy danh sách yêu cầu gia nhập thành công');
+    } catch (err) { next(err); }
+  },
+
+  // PATCH /api/v1/pages/:id/join-requests/:userId/approve
+  async approveJoinRequest(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const result = await pagesService.processJoinRequest(
+        getParam(req.params.id),
+        getParam(req.params.userId),
+        'APPROVED'
+      );
+      return sendSuccess(res, result, 'Đã chấp nhận yêu cầu gia nhập');
+    } catch (err) { next(err); }
+  },
+
+  // PATCH /api/v1/pages/:id/join-requests/:userId/reject
+  async rejectJoinRequest(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const result = await pagesService.processJoinRequest(
+        getParam(req.params.id),
+        getParam(req.params.userId),
+        'REJECTED'
+      );
+      return sendSuccess(res, result, 'Đã từ chối yêu cầu gia nhập');
+    } catch (err) { next(err); }
+  },
+
+  // PATCH /api/v1/pages/:id/members/:userId/role
+  async updateMemberRole(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const parsed = updateMemberRoleSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return sendError(res, parsed.error.issues[0].message, 400);
+      }
+      const result = await pagesService.updateMemberRole(
+        getParam(req.params.id),
+        getParam(req.params.userId),
+        parsed.data.role
+      );
+      return sendSuccess(res, result, 'Cập nhật vai trò thành công');
+    } catch (err) { next(err); }
+  },
+
+  // DELETE /api/v1/pages/:id/members/:userId/kick
+  async kickMember(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const result = await pagesService.kickMember(
+        getParam(req.params.id),
+        getParam(req.params.userId)
+      );
+      return sendSuccess(res, result, 'Đã xóa thành viên khỏi CLB');
     } catch (err) { next(err); }
   },
 };

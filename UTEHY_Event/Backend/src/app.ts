@@ -5,7 +5,7 @@ import path from "path";
 import rateLimit from 'express-rate-limit';
 import { errorHandler } from './middlewares/errorHandler';
 import authRoutes from './modules/auth/auth.routes';
-import { env } from './config/env';
+import { env, getCorsOrigins } from './config/env';
 import eventsRoutes from './modules/events/events.routes';
 import pagesRoutes from './modules/pages/pages.routes';
 import registrationsRoutes from './modules/registrations/registrations.routes';
@@ -23,7 +23,11 @@ const app = express();
 
 // ── Middlewares bảo mật ──────────────────────────────
 app.use(helmet());
-app.use(cors({ origin: env.FRONTEND_URL || '*', credentials: true }));
+app.use(cors({ 
+  origin: getCorsOrigins(),
+  credentials: true,
+  optionsSuccessStatus: 200 
+}));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 

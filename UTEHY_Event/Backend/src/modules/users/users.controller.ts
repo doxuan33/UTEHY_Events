@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { v2 as cloudinary } from 'cloudinary';
 import { usersService } from './users.service';
 import {
   updateProfileSchema,
@@ -8,6 +9,7 @@ import {
 } from './users.schema';
 import { sendSuccess, sendError } from '../../shared/utils/response';
 import { AuthRequest } from '../../middlewares/authenticate';
+import { uploadSingle } from '../../middlewares/upload.middleware';
 import { ImportStudentsInput } from './users.schema';
 
 const getParam = (param: string | string[]): string =>
@@ -21,6 +23,31 @@ export const usersController = {
       const result = await usersService.getUserProfile(req.user!.id);
       return sendSuccess(res, result, 'Lấy thông tin thành công');
     } catch (err) { next(err); }
+  },
+
+  // POST /api/v1/users/avatar (Upload avatar)
+  async uploadAvatar(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      await new Promise<void>((resolve, reject) => {
+        uploadSingle('avatar')(req, res, (err: any) => {
+          if (err) return reject(err);
+          resolve();
+        });
+      });
+
+      const avatarUrl = req.file ? (req.file as any).path : null;
+      const result = await usersService.updateAvatar(req.user!.id, avatarUrl);
+      return sendSuccess(res, result, 'Cập nhật ảnh đại diện thành công');
+    } catch (err: any) {
+      if (req.file) {
+        try {
+          await cloudinary.uploader.destroy((req.file as any).filename);
+        } catch (cleanupErr) {
+          console.error('Failed to cleanup Cloudinary file:', cleanupErr);
+        }
+      }
+      next(err);
+    }
   },
 
   // POST /api/v1/users/import-students (SYSTEM_ADMIN)

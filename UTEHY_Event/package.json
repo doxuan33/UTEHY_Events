@@ -1,6 +1,11 @@
 {
   "dependencies": {
     "@types/node-cron": "^3.0.11",
-    "node-cron": "^4.2.1"
+    "framer-motion": "^12.38.0",
+    "leaflet": "^1.9.4",
+    "node-cron": "^4.2.1",
+    "react-leaflet": "^5.0.0",
+    "socket.io-client": "^4.8.3",
+    "sonner": "^2.0.7"
   }
 }

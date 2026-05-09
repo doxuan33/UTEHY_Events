@@ -1,4 +1,5 @@
 import { Response, NextFunction } from 'express';
+import { v2 as cloudinary } from 'cloudinary';
 import { postsService } from './posts.service';
 import {
   createPostSchema,
@@ -9,6 +10,7 @@ import {
 } from './posts.schema';
 import { sendSuccess, sendError } from '../../shared/utils/response';
 import { AuthRequest } from '../../middlewares/authenticate';
+import { uploadMultiple } from '../../middlewares/upload.middleware';
 
 const getParam = (param: string | string[]): string =>
   Array.isArray(param) ? param[0] : param;
@@ -41,29 +43,100 @@ export const postsController = {
   // POST /api/v1/posts
   async createPost(req: AuthRequest, res: Response, next: NextFunction) {
     try {
+      // Handle multiple image uploads first (optional)
+      await new Promise<void>((resolve, reject) => {
+        uploadMultiple('images', 10)(req, res, (err: any) => {
+          if (err && !err.message.includes('Không có file')) {
+            return reject(err);
+          }
+          resolve();
+        });
+      });
+
       const parsed = createPostSchema.safeParse(req.body);
       if (!parsed.success) {
+        // Clean up uploaded files if validation fails
+        if (req.files) {
+          for (const file of req.files as any[]) {
+            try {
+              await cloudinary.uploader.destroy(file.filename);
+            } catch (cleanupErr) {
+              console.error('Failed to cleanup Cloudinary file:', cleanupErr);
+            }
+          }
+        }
         return sendError(res, parsed.error.issues[0].message, 400);
       }
-      const result = await postsService.createPost(req.user!.id, parsed.data);
+
+      const imageUrls = req.files ? (req.files as any[]).map(f => f.path) : [];
+
+      const result = await postsService.createPost(req.user!.id, {
+        ...parsed.data,
+        image_urls: imageUrls,
+      });
       return sendSuccess(res, result, 'Đăng bài viết thành công', 201);
-    } catch (err) { next(err); }
+    } catch (err: any) {
+      // Clean up uploaded files on error
+      if (req.files) {
+        for (const file of req.files as any[]) {
+          try {
+            await cloudinary.uploader.destroy(file.filename);
+          } catch (cleanupErr) {
+            console.error('Failed to cleanup Cloudinary file:', cleanupErr);
+          }
+        }
+      }
+      next(err);
+    }
   },
 
   // PATCH /api/v1/posts/:id
   async updatePost(req: AuthRequest, res: Response, next: NextFunction) {
     try {
+      // Handle optional multiple image uploads
+      await new Promise<void>((resolve, reject) => {
+        uploadMultiple('images', 10)(req, res, (err: any) => {
+          if (err && !err.message.includes('Không có file')) {
+            return reject(err);
+          }
+          resolve();
+        });
+      });
+
       const parsed = updatePostSchema.safeParse(req.body);
       if (!parsed.success) {
+        if (req.files) {
+          for (const file of req.files as any[]) {
+            try {
+              await cloudinary.uploader.destroy(file.filename);
+            } catch (cleanupErr) {
+              console.error('Failed to cleanup Cloudinary file:', cleanupErr);
+            }
+          }
+        }
         return sendError(res, parsed.error.issues[0].message, 400);
       }
+
+      const imageUrls = req.files ? (req.files as any[]).map(f => f.path) : undefined;
+
       const result = await postsService.updatePost(
         getParam(req.params.id),
         req.user!.id,
-        parsed.data
+        { ...parsed.data, image_urls: imageUrls }
       );
       return sendSuccess(res, result, 'Cập nhật bài viết thành công');
-    } catch (err) { next(err); }
+    } catch (err: any) {
+      if (req.files) {
+        for (const file of req.files as any[]) {
+          try {
+            await cloudinary.uploader.destroy(file.filename);
+          } catch (cleanupErr) {
+            console.error('Failed to cleanup Cloudinary file:', cleanupErr);
+          }
+        }
+      }
+      next(err);
+    }
   },
 
   // DELETE /api/v1/posts/:id

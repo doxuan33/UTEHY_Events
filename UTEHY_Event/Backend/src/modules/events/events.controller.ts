@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { v2 as cloudinary } from 'cloudinary';
 import { eventsService } from './events.service';
 import {
   createEventSchema,
@@ -8,6 +9,7 @@ import {
 } from './events.schema';
 import { sendSuccess, sendError } from '../../shared/utils/response';
 import { AuthRequest } from '../../middlewares/authenticate';
+import { uploadSingle } from '../../middlewares/upload.middleware';
 
 // Helper lấy string từ param
 const getParam = (param: string | string[]): string =>
@@ -66,35 +68,106 @@ export const eventsController = {
   // POST /api/v1/events
   async createEvent(req: AuthRequest, res: Response, next: NextFunction) {
     try {
+      // 1. Handle optional file upload (only if multipart/form-data)
+      const isMultipart = req.headers['content-type']?.includes('multipart/form-data');
+
+      if (isMultipart) {
+        await new Promise<void>((resolve, reject) => {
+          uploadSingle('coverImage')(req, res, (err: any) => {
+            if (err && !err.message.includes('Không có file')) {
+              return reject(err);
+            }
+            resolve();
+          });
+        });
+      }
+
       const parsed = createEventSchema.safeParse(req.body);
       if (!parsed.success) {
         return sendError(res, parsed.error.issues[0].message, 400);
       }
+
       // page_id lấy từ body (PAGE_ADMIN gửi lên page của mình)
       const { page_id } = req.body;
       if (!page_id) {
+        if (req.file) {
+          await cloudinary.uploader.destroy((req.file as any).filename);
+        }
         return sendError(res, 'Vui lòng cung cấp page_id', 400);
       }
-      const result = await eventsService.createEvent(page_id, parsed.data);
+
+      // Use uploaded file URL or banner_url from body (frontend uploads separately)
+      const bannerUrl = req.file ? (req.file as any).path : parsed.data.banner_url;
+
+      const result = await eventsService.createEvent(page_id, { ...parsed.data, banner_url: bannerUrl });
+
       return sendSuccess(res, result, 'Tạo sự kiện thành công, đang chờ duyệt', 201);
-    } catch (err) { next(err); }
+    } catch (err: any) {
+      if (req.file) {
+        try {
+          await cloudinary.uploader.destroy((req.file as any).filename);
+        } catch (cleanupErr) {
+          console.error('Failed to cleanup Cloudinary file:', cleanupErr);
+        }
+      }
+      next(err);
+    }
   },
 
   // PATCH /api/v1/events/:id
   async updateEvent(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-        const parsed = updateEventSchema.safeParse(req.body);
-        if (!parsed.success) {
+      // Handle optional file upload (only if multipart/form-data)
+      const isMultipart = req.headers['content-type']?.includes('multipart/form-data');
+
+      if (isMultipart) {
+        await new Promise<void>((resolve, reject) => {
+          uploadSingle('coverImage')(req, res, (err: any) => {
+            if (err && !err.message.includes('Không có file')) {
+              return reject(err);
+            }
+            resolve();
+          });
+        });
+      }
+
+      const parsed = updateEventSchema.safeParse(req.body);
+      if (!parsed.success) {
+        // Clean up uploaded file if validation fails
+        if (req.file) {
+          await (global as any).cloudinary.uploader.destroy((req.file as any).filename);
+        }
         return sendError(res, parsed.error.issues[0].message, 400);
+      }
+
+      const { page_id } = req.body;
+      if (!page_id) {
+        if (req.file) {
+          await cloudinary.uploader.destroy((req.file as any).filename);
         }
-        const { page_id } = req.body;
-        if (!page_id) {
         return sendError(res, 'Vui lòng cung cấp page_id', 400);
+      }
+
+      const bannerUrl = req.file ? (req.file as any).path : parsed.data.banner_url;
+
+      const result = await eventsService.updateEvent(
+        getParam(req.params.id),
+        page_id,
+        { ...parsed.data, banner_url: bannerUrl }
+      );
+
+      return sendSuccess(res, result, 'Cập nhật sự kiện thành công');
+    } catch (err: any) {
+      if (req.file) {
+        try {
+          await cloudinary.uploader.destroy((req.file as any).filename);
+        } catch (cleanupErr) {
+          console.error('Failed to cleanup Cloudinary file:', cleanupErr);
         }
-        const result = await eventsService.updateEvent(getParam(req.params.id), page_id, parsed.data);
-        return sendSuccess(res, result, 'Cập nhật sự kiện thành công');
-    } catch (err) { next(err); }
-    },
+      }
+      next(err);
+    }
+  },
 
   // PATCH /api/v1/events/:id/approve
   async approveEvent(req: AuthRequest, res: Response, next: NextFunction) {
@@ -104,8 +177,8 @@ export const eventsController = {
     } catch (err) { next(err); }
     },
 
-    // PATCH /api/v1/events/:id/reject
-    async rejectEvent(req: AuthRequest, res: Response, next: NextFunction) {
+  // PATCH /api/v1/events/:id/reject
+  async rejectEvent(req: AuthRequest, res: Response, next: NextFunction) {
     try {
         const parsed = rejectEventSchema.safeParse(req.body);
         if (!parsed.success) {
@@ -116,8 +189,8 @@ export const eventsController = {
     } catch (err) { next(err); }
     },
 
-    // DELETE /api/v1/events/:id
-    async deleteEvent(req: AuthRequest, res: Response, next: NextFunction) {
+  // DELETE /api/v1/events/:id
+  async deleteEvent(req: AuthRequest, res: Response, next: NextFunction) {
     try {
         const { page_id } = req.body;
         if (!page_id) {

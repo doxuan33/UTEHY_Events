@@ -1,5 +1,5 @@
 import prisma from '../../config/database';
-import { CreatePageInput, UpdatePageInput, AddMemberInput } from './pages.schema';
+import { CreatePageInput, UpdatePageInput, AddMemberInput, JoinPageInput, UpdateMemberRoleInput } from './pages.schema';
 
 export const pagesService = {
 
@@ -218,7 +218,7 @@ export const pagesService = {
         user: {
           select: {
             id: true, email: true, role: true,
-            profile: { select: { full_name: true, student_id: true } },
+            profile: { select: { full_name: true, student_id: true, avatar_url: true, class_name: true } },
           },
         },
       },
@@ -255,6 +255,236 @@ export const pagesService = {
     });
   },
 
+  // ── NỘP ĐƠN GIA NHẬP CLB (STUDENT) ────────────────────────
+  async joinPage(pageId: string, userId: string, input: JoinPageInput) {
+    const page = await prisma.page.findUnique({
+      where: { id: pageId },
+      include: { members: { where: { user_id: userId } } },
+    });
+    if (!page) {
+      throw { statusCode: 404, message: 'Không tìm thấy trang CLB' };
+    }
+
+    // Kiểm tra đã là thành viên chưa
+    if (page.members.length > 0) {
+      throw { statusCode: 409, message: 'Bạn đã là thành viên của CLB này' };
+    }
+
+    // Kiểm tra đã gửi yêu cầu chưa
+    const existingRequest = await prisma.pageJoinRequest.findUnique({
+      where: { page_id_user_id: { page_id: pageId, user_id: userId } },
+    });
+    if (existingRequest) {
+      throw { statusCode: 409, message: 'Bạn đã gửi yêu cầu gia nhập rồi' };
+    }
+
+    return prisma.pageJoinRequest.create({
+      data: {
+        page_id: pageId,
+        user_id: userId,
+        message: input.message,
+      },
+      include: {
+        user: {
+          select: {
+            id: true, email: true, role: true,
+            profile: { select: { full_name: true, student_id: true, avatar_url: true, class_name: true } },
+          },
+        },
+      },
+    });
+  },
+
+  // ── LẤY DANH SÁCH YÊU CẦU GIA NHẬP (SYSTEM_ADMIN / PAGE_ADMIN) ──
+  async getJoinRequests(pageId: string) {
+    const page = await prisma.page.findUnique({ where: { id: pageId } });
+    if (!page) {
+      throw { statusCode: 404, message: 'Không tìm thấy trang CLB' };
+    }
+
+    const requests = await prisma.pageJoinRequest.findMany({
+      where: { page_id: pageId, status: 'PENDING' },
+      include: {
+        user: {
+          select: {
+            id: true, email: true, role: true,
+            profile: { select: { full_name: true, student_id: true, avatar_url: true, class_name: true } },
+          },
+        },
+      },
+      orderBy: { created_at: 'desc' },
+    });
+
+    return requests;
+  },
+
+  // ── DUYỆT / TỪ CHỐI YÊU CẦU GIA NHẬP (SYSTEM_ADMIN / PAGE_ADMIN) ──
+  async processJoinRequest(pageId: string, userId: string, action: 'APPROVED' | 'REJECTED') {
+    const request = await prisma.pageJoinRequest.findUnique({
+      where: { page_id_user_id: { page_id: pageId, user_id: userId } },
+    });
+    if (!request) {
+      throw { statusCode: 404, message: 'Không tìm thấy yêu cầu gia nhập' };
+    }
+
+    if (action === 'APPROVED') {
+      await prisma.$transaction(async (tx) => {
+        await tx.pageJoinRequest.update({
+          where: { page_id_user_id: { page_id: pageId, user_id: userId } },
+          data: { status: 'APPROVED' },
+        });
+
+        // Tạo member mới
+        await tx.pageMember.create({
+          data: {
+            page_id: pageId,
+            user_id: userId,
+            is_owner: false,
+          },
+        });
+
+        // Cập nhật role user thành PAGE_ADMIN
+        await tx.user.update({
+          where: { id: userId },
+          data: { role: 'PAGE_ADMIN' },
+        });
+
+        // Tạo notification
+        await tx.notification.create({
+          data: {
+            user_id: userId,
+            type: 'SYSTEM',
+            title: 'Được chấp nhận vào CLB',
+            body: `Bạn đã được chấp nhận gia nhập CLB`,
+            data: JSON.stringify({ page_id: pageId }),
+          },
+        });
+      });
+    } else {
+      await prisma.pageJoinRequest.update({
+        where: { page_id_user_id: { page_id: pageId, user_id: userId } },
+        data: { status: 'REJECTED' },
+      });
+    }
+
+    return request;
+  },
+
+  // ── CẬP NHẬT VAI TRÒ THÀNH VIÊN (SYSTEM_ADMIN / PAGE_ADMIN) ──
+  async updateMemberRole(pageId: string, userId: string, role: 'CHUNHIEM' | 'PHOCHUNHIEM' | 'THANHVIEN') {
+    const member = await prisma.pageMember.findUnique({
+      where: { page_id_user_id: { page_id: pageId, user_id: userId } },
+    });
+    if (!member) {
+      throw { statusCode: 404, message: 'Không tìm thấy thành viên' };
+    }
+
+    // Cập nhật is_owner nếu là chủ nhiệm
+    await prisma.pageMember.update({
+      where: { page_id_user_id: { page_id: pageId, user_id: userId } },
+      data: { is_owner: role === 'CHUNHIEM' },
+    });
+  },
+
+  // ── XÓA THÀNH VIÊN KHỎI CLB (SYSTEM_ADMIN / PAGE_ADMIN) ──
+  async kickMember(pageId: string, userId: string) {
+    const member = await prisma.pageMember.findUnique({
+      where: { page_id_user_id: { page_id: pageId, user_id: userId } },
+    });
+    if (!member) {
+      throw { statusCode: 404, message: 'Không tìm thấy thành viên' };
+    }
+    if (member.is_owner) {
+      throw { statusCode: 400, message: 'Không thể xóa chủ CLB' };
+    }
+
+    // Kiểm tra user còn quản lý page nào khác không
+    const otherPages = await prisma.pageMember.count({
+      where: { user_id: userId, NOT: { page_id: pageId } },
+    });
+
+    // Nếu không còn quản lý page nào → hạ về STUDENT
+    if (otherPages === 0) {
+      await prisma.user.update({
+        where: { id: userId },
+        data: { role: 'STUDENT' },
+      });
+    }
+
+    await prisma.pageMember.delete({
+      where: { page_id_user_id: { page_id: pageId, user_id: userId } },
+    });
+
+    return { message: 'Đã xóa thành viên khỏi CLB' };
+  },
+
+  // ── LẤY DANH SÁCH THÀNH VIÊN (SYSTEM_ADMIN / PAGE_ADMIN) ──
+  async getMembers(pageId: string) {
+    const page = await prisma.page.findUnique({
+      where: { id: pageId },
+      include: {
+        members: {
+          include: {
+            user: {
+              select: {
+                id: true, email: true, role: true, is_active: true,
+                profile: { select: { full_name: true, student_id: true, avatar_url: true, class_name: true } },
+              },
+            },
+          },
+          orderBy: { joined_at: 'desc' },
+        },
+      },
+    });
+
+    if (!page) {
+      throw { statusCode: 404, message: 'Không tìm thấy trang CLB' };
+    }
+
+    return page.members.map(m => ({
+      id: m.id,
+      page_id: m.page_id,
+      user_id: m.user_id,
+      is_owner: m.is_owner,
+      joined_at: m.joined_at,
+      user: m.user,
+    }));
+  },
+
+  // ── LẤY DANH SÁCH YÊU CẦU ĐÃ XỬ LÝ (SYSTEM_ADMIN / PAGE_ADMIN) ──
+  async getProcessedJoinRequests(pageId: string) {
+    const requests = await prisma.pageJoinRequest.findMany({
+      where: { page_id: pageId, NOT: { status: 'PENDING' } },
+      include: {
+        user: {
+          select: {
+            id: true, email: true, role: true,
+            profile: { select: { full_name: true, student_id: true, avatar_url: true, class_name: true } },
+          },
+        },
+      },
+      orderBy: { updated_at: 'desc' },
+    });
+
+    return requests;
+  },
+
+  // ── XÓA YÊU CẦU GIA NHẬP (SYSTEM_ADMIN / PAGE_ADMIN) ──────
+  async deleteJoinRequest(pageId: string, userId: string) {
+    const request = await prisma.pageJoinRequest.findUnique({
+      where: { page_id_user_id: { page_id: pageId, user_id: userId } },
+    });
+    if (!request) {
+      throw { statusCode: 404, message: 'Không tìm thấy yêu cầu gia nhập' };
+    }
+
+    await prisma.pageJoinRequest.delete({
+      where: { page_id_user_id: { page_id: pageId, user_id: userId } },
+    });
+
+    return { message: 'Đã xóa yêu cầu gia nhập' };
+  },
+
   // ── LẤY DANH SÁCH PAGE USER ĐANG THEO DÕI ────────────────
   async getFollowingPages(userId: string) {
     const follows = await prisma.pageFollower.findMany({
@@ -270,5 +500,42 @@ export const pagesService = {
     });
 
     return follows.map((f) => f.page);
+  },
+
+  // ── THỐNG KÊ THEO CLB ────────────────────────────────────
+  async getPageStats() {
+    const pages = await prisma.page.findMany({
+      include: {
+        _count: {
+          select: {
+            followers: true,
+            events: true,
+            posts: true,
+          },
+        },
+        events: {
+          where: { status: { in: ['APPROVED', 'ONGOING', 'CLOSED'] } },
+          select: {
+            _count: { select: { registrations: true } },
+            training_points: true,
+          },
+        },
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    return pages.map(page => ({
+      id: page.id,
+      name: page.name,
+      slug: page.slug,
+      avatar_url: page.avatar_url,
+      is_verified: page.is_verified,
+      followers_count: page._count.followers,
+      events_count: page._count.events,
+      posts_count: page._count.posts,
+      total_registrations: page.events.reduce(
+        (sum, e) => sum + e._count.registrations, 0
+      ),
+    }));
   },
 };

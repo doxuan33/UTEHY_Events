@@ -4,12 +4,12 @@ export const createPostSchema = z.object({
   page_id: z.string().uuid('page_id không hợp lệ'),
   event_id: z.string().uuid('event_id không hợp lệ').optional(),
   content: z.string().min(1, 'Nội dung không được để trống').max(5000),
-  image_urls: z.array(z.string().url('URL ảnh không hợp lệ')).max(10).optional(),
+  // image_urls will be populated from uploaded files, not from direct input
 });
 
 export const updatePostSchema = z.object({
   content: z.string().min(1).max(5000).optional(),
-  image_urls: z.array(z.string().url()).max(10).optional(),
+  // image_urls will be set via separate upload or kept as-is
 });
 
 export const createCommentSchema = z.object({

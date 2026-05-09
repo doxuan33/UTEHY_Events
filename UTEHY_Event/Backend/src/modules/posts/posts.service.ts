@@ -1,4 +1,5 @@
 import prisma from '../../config/database';
+import { Prisma } from '@prisma/client';
 import {
   CreatePostInput,
   UpdatePostInput,
@@ -11,7 +12,7 @@ import {
 export const postsService = {
 
   // ── TẠO BÀI VIẾT (PAGE_ADMIN) ────────────────────────────
-  async createPost(authorId: string, input: CreatePostInput) {
+  async createPost(authorId: string, input: CreatePostInput & { image_urls: string[] }) {
     // Kiểm tra user có phải thành viên của page không
     const member = await prisma.pageMember.findUnique({
       where: {
@@ -38,7 +39,7 @@ export const postsService = {
         author_id: authorId,
         event_id: input.event_id,
         content: input.content,
-        image_urls: input.image_urls ? JSON.stringify(input.image_urls) : null,
+        image_urls: input.image_urls && input.image_urls.length > 0 ? JSON.stringify(input.image_urls) : Prisma.JsonNull,
       },
       include: {
         page: { select: { id: true, name: true, avatar_url: true, slug: true } },
@@ -65,15 +66,19 @@ export const postsService = {
     const { cursor, limit, page_id } = query;
 
     // Lấy danh sách page user đang follow
-    const followingPages = await prisma.pageFollower.findMany({
-      where: { user_id: userId },
-      select: { page_id: true },
-    });
-    const followingPageIds = followingPages.map(f => f.page_id);
+     const followingPages = await prisma.pageFollower.findMany({
+       where: { user_id: userId },
+       select: { page_id: true },
+     });
+     const followingPageIds = followingPages.map(f => f.page_id);
 
-    if (followingPageIds.length === 0 && !page_id) {
-      return { data: [], next_cursor: null };
-    }
+     // Nếu user không follow trang nào và không có page_id cụ thể → return empty
+     if (followingPageIds.length === 0 && !page_id) {
+       return { data: [], next_cursor: null };
+     }
+
+     // Nếu có page_id được chỉ định, sử dụng nó; nếu không, dùng followingPageIds
+     // (đã đảm bảo followingPageIds không empty ở đây nếu không có page_id)
 
     // Xác định điểm bắt đầu cursor
     let cursorCondition = {};
@@ -89,7 +94,6 @@ export const postsService = {
 
     const where: any = {
       ...cursorCondition,
-      page: { status: undefined },
       ...(page_id
         ? { page_id }
         : { page_id: { in: followingPageIds } }
@@ -170,7 +174,7 @@ export const postsService = {
   },
 
   // ── CẬP NHẬT BÀI VIẾT (PAGE_ADMIN) ──────────────────────
-  async updatePost(postId: string, authorId: string, input: UpdatePostInput) {
+  async updatePost(postId: string, authorId: string, input: UpdatePostInput & { image_urls?: string[] }) {
     const post = await prisma.post.findUnique({ where: { id: postId } });
 
     if (!post) {
@@ -184,7 +188,9 @@ export const postsService = {
       where: { id: postId },
       data: {
         ...(input.content && { content: input.content }),
-        ...(input.image_urls && { image_urls: JSON.stringify(input.image_urls) }),
+        ...(input.image_urls !== undefined && {
+image_urls: input.image_urls && input.image_urls.length > 0 ? JSON.stringify(input.image_urls) : Prisma.JsonNull
+         }),
       },
       include: {
         page: { select: { id: true, name: true, avatar_url: true } },
@@ -384,7 +390,8 @@ export const postsService = {
   formatPost(post: any, userId: string) {
     return {
       ...post,
-      image_urls: post.image_urls ? JSON.parse(post.image_urls) : [],
+      // Prisma returns Json fields already parsed, so no need for JSON.parse
+      image_urls: Array.isArray(post.image_urls) ? post.image_urls : [],
       is_liked: post.likes ? post.likes.length > 0 : false,
       likes_count: post._count?.likes ?? post.likes_count,
       comments_count: post._count?.comments ?? post.comments_count,

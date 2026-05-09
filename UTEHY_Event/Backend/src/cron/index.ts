@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import prisma from '../config/database';
+import { Prisma } from '@prisma/client';
 import { notificationsService } from '../modules/notifications/notifications.service';
 import { logger } from '../shared/utils/logger';
 import { CreateNotificationInput } from '../modules/notifications/notifications.schema';
@@ -62,7 +63,7 @@ const eventReminderJob = cron.createTask('*/15 * * * *', async () => {
             type: notif.type,
             title: notif.title,
             body: notif.body,
-            data: notif.data ? JSON.stringify(notif.data) : null,
+            data: notif.data ? JSON.stringify(notif.data) : Prisma.JsonNull,
           },
         });
       }
@@ -139,7 +140,7 @@ const eventCloseJob = cron.createTask('*/5 * * * *', async () => {
             type: notif.type,
             title: notif.title,
             body: notif.body,
-            data: notif.data ? JSON.stringify(notif.data) : null,
+            data: notif.data ? JSON.stringify(notif.data) : Prisma.JsonNull,
           },
         });
       }

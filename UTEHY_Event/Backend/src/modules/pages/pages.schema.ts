@@ -23,6 +23,16 @@ export const addMemberSchema = z.object({
   is_owner: z.boolean().default(false),
 });
 
+export const joinPageSchema = z.object({
+  message: z.string().max(1000).optional(),
+});
+
+export const updateMemberRoleSchema = z.object({
+  role: z.enum(['CHUNHIEM', 'PHOCHUNHIEM', 'THANHVIEN']),
+});
+
 export type CreatePageInput = z.infer<typeof createPageSchema>;
 export type UpdatePageInput = z.infer<typeof updatePageSchema>;
 export type AddMemberInput  = z.infer<typeof addMemberSchema>;
+export type JoinPageInput   = z.infer<typeof joinPageSchema>;
+export type UpdateMemberRoleInput = z.infer<typeof updateMemberRoleSchema>;

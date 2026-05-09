@@ -1,4 +1,5 @@
 import prisma from '../../config/database';
+import { Prisma } from '@prisma/client';
 import { CreateNotificationInput, GetNotificationsQuery } from './notifications.schema';
 
 // Map lưu SSE clients: userId → Response object
@@ -14,7 +15,7 @@ export const notificationsService = {
         type: input.type,
         title: input.title,
         body: input.body,
-        data: input.data ? JSON.stringify(input.data) : null,
+        data: input.data ? JSON.stringify(input.data) : Prisma.JsonNull,
       },
     });
 
@@ -37,7 +38,7 @@ export const notificationsService = {
         type: input.type,
         title: input.title,
         body: input.body,
-        data: input.data ? JSON.stringify(input.data) : null,
+        data: input.data ? JSON.stringify(input.data) : Prisma.JsonNull,
       })),
     });
 
@@ -74,11 +75,12 @@ export const notificationsService = {
       }),
     ]);
 
-    return {
-      data: notifications.map(n => ({
-        ...n,
-        data: n.data ? JSON.parse(n.data) : null,
-      })),
+     return {
+       data: notifications.map(n => ({
+         ...n,
+         // Prisma returns Json fields already parsed
+         data: n.data || null,
+       })),
       meta: {
         total,
         page,
